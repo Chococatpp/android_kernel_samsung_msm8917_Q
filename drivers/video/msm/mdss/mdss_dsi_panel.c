@@ -35,7 +35,7 @@
 DEFINE_MUTEX(STATUS_CHANGE);
 /* For Hall ic panel reset funtion */
 DEFINE_MUTEX(LP_STOP_MODE_LOCK);
-//extern unsigned int is_boot_recovery;
+extern unsigned int is_boot_recovery;
 #endif
 #include "mdss_livedisplay.h"
 
