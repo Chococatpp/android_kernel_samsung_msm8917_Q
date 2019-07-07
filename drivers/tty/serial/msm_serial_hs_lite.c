@@ -76,7 +76,7 @@ enum uart_func_mode {
 	UART_FOUR_WIRE,/* can support HW Flow control. */
 };
 
-#if CONFIG_SEC_BSP
+#ifdef CONFIG_SEC_BSP
 enum {
 	DIR_RX,
 	DIR_TX,
