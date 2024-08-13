@@ -871,9 +871,9 @@ static inline struct file *get_file(struct file *f)
 /* Page cache limit. The filesystems should put that into their s_maxbytes 
    limits, otherwise bad things can happen in VM. */ 
 #if BITS_PER_LONG==32
-#define MAX_LFS_FILESIZE       ((loff_t)ULONG_MAX << PAGE_SHIFT)
+#define MAX_LFS_FILESIZE	((loff_t)ULONG_MAX << PAGE_SHIFT)
 #elif BITS_PER_LONG==64
-#define MAX_LFS_FILESIZE       ((loff_t)LLONG_MAX)
+#define MAX_LFS_FILESIZE 	((loff_t)LLONG_MAX)
 #endif
 
 #define FL_POSIX	1
@@ -2895,6 +2895,6 @@ static inline bool dir_relax(struct inode *inode)
 extern void inode_nohighmem(struct inode *inode);
 
 extern bool path_noexec(const struct path *path);
-#define AID_USE_ROOT_RESERVED	KGIDT_INIT(5678)
+#define AID_USE_ROOT_RESERVED KGIDT_INIT(5678)
 
 #endif /* _LINUX_FS_H */

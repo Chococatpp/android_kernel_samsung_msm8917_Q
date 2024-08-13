@@ -127,45 +127,6 @@ static bool f2fs_bio_post_read_required(struct bio *bio, int err)
 
 static void f2fs_read_end_io(struct bio *bio, int err)
 {
-	}
-	if (bio->bi_private)
-		mempool_free(bio->bi_private, bio_post_read_ctx_pool);
-	bio_put(bio);
-}
-
-static void bio_post_read_processing(struct bio_post_read_ctx *ctx);
-
-static void decrypt_work(struct work_struct *work)
-{
-	struct bio_post_read_ctx *ctx =
-		container_of(work, struct bio_post_read_ctx, work);
-
-	fscrypt_decrypt_bio(ctx->bio);
-
-	bio_post_read_processing(ctx);
-}
-
-static void bio_post_read_processing(struct bio_post_read_ctx *ctx)
-{
-	switch (++ctx->cur_step) {
-	case STEP_DECRYPT:
-		if (ctx->enabled_steps & (1 << STEP_DECRYPT)) {
-			INIT_WORK(&ctx->work, decrypt_work);
-			fscrypt_enqueue_decrypt_work(&ctx->work);
-		ctx->cur_step++;
-		/* fall-through */
-	default:
-		__read_end_io(ctx->bio, 0);
-	}
-}
-
-static bool f2fs_bio_post_read_required(struct bio *bio, int err)
-{
-	return bio->bi_private && !err;
-}
-
-static void f2fs_read_end_io(struct bio *bio, int err)
-{
 	if (time_to_inject(F2FS_P_SB(bio->bi_io_vec->bv_page), FAULT_IO)) {
 		f2fs_show_injection_info(FAULT_IO);
 		err = -EIO;
@@ -173,9 +134,11 @@ static void f2fs_read_end_io(struct bio *bio, int err)
 
 	if (f2fs_bio_post_read_required(bio, err)) {
 		struct bio_post_read_ctx *ctx = bio->bi_private;
+
 		ctx->cur_step = STEP_INITIAL;
 		bio_post_read_processing(ctx);
 		return;
+	}
 
 	__read_end_io(bio, err);
 }
@@ -205,8 +168,6 @@ static void f2fs_write_end_io(struct bio *bio, int err)
 
 		if (unlikely(err)) {
 			set_bit(AS_EIO, &page->mapping->flags);
-			f2fs_bug_on(sbi, page->mapping == NODE_MAPPING(sbi) ||
-					 page->mapping == META_MAPPING(sbi));
 			if (type == F2FS_WB_CP_DATA)
 				f2fs_stop_checkpoint(sbi, true);
 		}
@@ -2008,7 +1969,6 @@ static int f2fs_write_cache_pages(struct address_space *mapping,
 	int ret = 0;
 	int done = 0;
 	struct pagevec pvec;
-	struct f2fs_sb_info *sbi = F2FS_M_SB(mapping);
 	int nr_pages;
 	pgoff_t uninitialized_var(writeback_index);
 	pgoff_t index;
@@ -2053,8 +2013,8 @@ retry:
 	while (!done && (index <= end)) {
 		int i;
 
-		nr_pages = pagevec_lookup_range_tag(&pvec, mapping, &index, end,
-				tag);
+		nr_pages = pagevec_lookup_tag(&pvec, mapping, &index, tag,
+			      min(end - index, (pgoff_t)PAGEVEC_SIZE - 1) + 1);
 		if (nr_pages == 0)
 			break;
 
@@ -2063,8 +2023,13 @@ retry:
 			bool submitted = false;
 
 			/* give a priority to WB_SYNC threads */
-			if (atomic_read(&sbi->wb_sync_req[DATA]) &&
+			if (atomic_read(&F2FS_M_SB(mapping)->wb_sync_req) &&
 					wbc->sync_mode == WB_SYNC_NONE) {
+				done = 1;
+				break;
+			}
+
+			if (page->index > end) {
 				done = 1;
 				break;
 			}
@@ -2196,8 +2161,8 @@ static int __f2fs_write_data_pages(struct address_space *mapping,
 
 	/* to avoid spliting IOs due to mixed WB_SYNC_ALL and WB_SYNC_NONE */
 	if (wbc->sync_mode == WB_SYNC_ALL)
-		atomic_inc(&sbi->wb_sync_req[DATA]);
-	else if (atomic_read(&sbi->wb_sync_req[DATA]))
+		atomic_inc(&sbi->wb_sync_req);
+	else if (atomic_read(&sbi->wb_sync_req))
 		goto skip_write;
 
 	if (__should_serialize_io(inode, wbc)) {
@@ -2213,7 +2178,7 @@ static int __f2fs_write_data_pages(struct address_space *mapping,
 		mutex_unlock(&sbi->writepages);
 
 	if (wbc->sync_mode == WB_SYNC_ALL)
-		atomic_dec(&sbi->wb_sync_req[DATA]);
+		atomic_dec(&sbi->wb_sync_req);
 	/*
 	 * if some pages were truncated, we cannot guarantee its mapping->host
 	 * to detect pending bios.
