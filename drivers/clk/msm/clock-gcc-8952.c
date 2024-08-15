@@ -4185,7 +4185,7 @@ static void override_for_8917(int speed_bin)
 	} else {
 		OVERRIDE_FMAX5(gfx3d,
 			LOWER, 270000000, LOW, 400000000, NOMINAL, 523200000,
-			NOM_PLUS, 550000000, HIGH, 560000000);
+			NOM_PLUS, 550000000, HIGH, 650000000);
 		OVERRIDE_FTABLE(gfx3d, ftbl_gcc_oxili_gfx3d_clk, 8917);
 	}
 
