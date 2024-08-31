@@ -298,8 +298,8 @@ CONFIG_SHELL := $(shell if [ -x "$$BASH" ]; then echo $$BASH; \
 
 HOSTCC       = $(CCACHE) gcc
 HOSTCXX      = $(CCACHE) g++
-HOSTCFLAGS   = -Wall -Wmissing-prototypes -Wstrict-prototypes -O2 -fomit-frame-pointer -std=gnu89
-HOSTCXXFLAGS = -O2
+HOSTCFLAGS   = -Wall -Wmissing-prototypes -Wstrict-prototypes -O2 -fomit-frame-pointer -std=gnu99
+HOSTCXXFLAGS = -O3
 
 ifeq ($(shell $(HOSTCC) -v 2>&1 | grep -c "clang version"), 1)
 HOSTCFLAGS  += -Wno-unused-value -Wno-unused-parameter \
@@ -628,7 +628,7 @@ KBUILD_AFLAGS	+= $(call cc-option,-fno-PIE)
 ifdef CONFIG_CC_OPTIMIZE_FOR_SIZE
 KBUILD_CFLAGS	+= -Os $(call cc-disable-warning,maybe-uninitialized,)
 else
-KBUILD_CFLAGS   += -Ofast $(call cc-disable-warning,maybe-uninitialized,array-bounds)
+KBUILD_CFLAGS   += -Ofast -mtune=cortex-a53 $(call cc-disable-warning,maybe-uninitialized,array-bounds)
 KBUILD_CFLAGS   += $(call cc-disable-warning,array-bounds)
 KBUILD_CFLAGS   += $(call cc-disable-warning, frame-larger-than)
 KBUILD_CFLAGS   += $(call cc-option, -Wno-frame-larger-than)
