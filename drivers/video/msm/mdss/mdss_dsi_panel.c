@@ -22,7 +22,6 @@
 #include <linux/qpnp/pwm.h>
 #include <linux/err.h>
 #include <linux/string.h>
-#include <linux/display_state.h>
 
 #include "mdss_dsi.h"
 #include "mdss_debug.h"
@@ -36,7 +35,7 @@
 DEFINE_MUTEX(STATUS_CHANGE);
 /* For Hall ic panel reset funtion */
 DEFINE_MUTEX(LP_STOP_MODE_LOCK);
-//extern unsigned int is_boot_recovery; /* not use */
+extern unsigned int is_boot_recovery;
 #endif
 #include "mdss_livedisplay.h"
 
@@ -47,13 +46,6 @@ DEFINE_MUTEX(LP_STOP_MODE_LOCK);
 #define VSYNC_DELAY msecs_to_jiffies(17)
 
 DEFINE_LED_TRIGGER(bl_led_trigger);
-
-bool display_on = true;
-
-bool is_display_on()
-{
-	return display_on;
-}
 
 void mdss_dsi_panel_pwm_cfg(struct mdss_dsi_ctrl_pdata *ctrl)
 {
@@ -1002,8 +994,6 @@ static int mdss_dsi_panel_on(struct mdss_panel_data *pdata)
 		return -EINVAL;
 	}
 
-	display_on = true;
-
 	pinfo = &pdata->panel_info;
 	ctrl = container_of(pdata, struct mdss_dsi_ctrl_pdata,
 				panel_data);
@@ -1273,8 +1263,6 @@ static int mdss_dsi_panel_off(struct mdss_panel_data *pdata)
 #endif
 
 	mdss_dsi_panel_off_hdmi(ctrl, pinfo);
-
-	display_on = false;
 
 end:
 	/* clear idle state */
@@ -2894,19 +2882,24 @@ static int mdss_panel_parse_display_timings(struct device_node *np,
 
 	timings_np = of_get_child_by_name(np, "qcom,mdss-dsi-display-timings");
 	if (!timings_np) {
-		struct dsi_panel_timing pt;
-		memset(&pt, 0, sizeof(struct dsi_panel_timing));
+		struct dsi_panel_timing *pt;
+
+		pt = kzalloc(sizeof(*pt), GFP_KERNEL);
+		if (!pt)
+			return -ENOMEM;
 
 		/*
 		 * display timings node is not available, fallback to reading
 		 * timings directly from root node instead
 		 */
 		pr_debug("reading display-timings from panel node\n");
-		rc = mdss_dsi_panel_timing_from_dt(np, &pt, panel_data);
+		rc = mdss_dsi_panel_timing_from_dt(np, pt, panel_data);
 		if (!rc) {
-			mdss_dsi_panel_config_res_properties(np, &pt,
+			mdss_dsi_panel_config_res_properties(np, pt,
 					panel_data, true);
-			rc = mdss_dsi_panel_timing_switch(ctrl, &pt.timing);
+			rc = mdss_dsi_panel_timing_switch(ctrl, &pt->timing);
+		} else {
+			kfree(pt);
 		}
 		return rc;
 	}
@@ -3304,7 +3297,6 @@ u32 mdss_samsung_panel_cmd_read(struct mdss_dsi_ctrl_pdata *ctrl,
 {
 	struct dcs_cmd_req cmdreq;
 	struct mdss_panel_info *pinfo;
-	struct samsung_display_driver_data *vdd = samsung_get_vdd();
 
 	pinfo = &(ctrl->panel_data.panel_info);
 	if (pinfo->dcs_cmd_by_left) {
@@ -3316,9 +3308,6 @@ u32 mdss_samsung_panel_cmd_read(struct mdss_dsi_ctrl_pdata *ctrl,
 	cmdreq.cmds = pcmds->cmds;
 	cmdreq.cmds_cnt = 1;
 	cmdreq.flags = CMD_REQ_RX | CMD_REQ_COMMIT;
-
-	if (vdd->poc_operation)
-		cmdreq.flags |=CMD_REQ_DMA_TPG;
 
 	if (read_size)
 		cmdreq.rlen = read_size;

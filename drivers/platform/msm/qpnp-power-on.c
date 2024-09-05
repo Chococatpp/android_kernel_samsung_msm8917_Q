@@ -942,28 +942,40 @@ qpnp_pon_input_dispatch(struct qpnp_pon *pon, u32 pon_type)
 #if defined(CONFIG_SEC_PM)
 	/* RESIN is used for VOL DOWN key, it should report the keycode for kernel panic */
 	if ((cfg->key_code == KEY_VOLUMEDOWN) && (pon_rt_sts & pon_rt_bit)) {
+#ifdef CONFIG_SEC_PM_DEBUG
 		pon->powerkey_state = 1;
+#endif
 		check_vdkey_press = 1;
 		vdkey_press_count++;
 	} else if((cfg->key_code == KEY_VOLUMEDOWN) && !(pon_rt_sts & pon_rt_bit)) {
+#ifdef CONFIG_SEC_PM_DEBUG
 		pon->powerkey_state = 0;
+#endif
 		check_vdkey_press = 0;
 	}
 	if ((cfg->key_code == KEY_POWER) && (pon_rt_sts & pon_rt_bit)) {
+#ifdef CONFIG_SEC_PM_DEBUG
 		pon->powerkey_state = 1;
+#endif
 		check_pkey_press = 1;
 		pkey_press_count++;
 	} else if((cfg->key_code == KEY_POWER) && !(pon_rt_sts & pon_rt_bit)) {
+#ifdef CONFIG_SEC_PM_DEBUG
 		pon->powerkey_state = 0;
+#endif
 		check_pkey_press = 0;
 	}
 
 	/* KEY_ENDCALL for folder model */
 	if ((cfg->key_code == KEY_ENDCALL) && (pon_rt_sts & pon_rt_bit)) {
+#ifdef CONFIG_SEC_PM_DEBUG
 		pon->powerkey_state = 1;
+#endif
 		check_pkey_press = 1;
 	} else if((cfg->key_code == KEY_ENDCALL) && !(pon_rt_sts & pon_rt_bit)) {
+#ifdef CONFIG_SEC_PM_DEBUG
 		pon->powerkey_state = 0;
+#endif
 		check_pkey_press = 0;
 	}
 #endif

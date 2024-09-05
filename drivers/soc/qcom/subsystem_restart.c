@@ -1134,6 +1134,7 @@ int subsystem_restart_dev(struct subsys_device *dev)
 
 	name = dev->desc->name;
 
+#ifdef CONFIG_SEC_DEBUG_SUMMARY
 	if ((sec_debug_is_modem_seperate_debug_ssr() == SEC_DEBUG_MODEM_SEPERATE_EN)
 	    && strcmp(name, "adsp")) {
 		pr_info("SSR seperated by cp magic!!\n");
@@ -1156,6 +1157,7 @@ int subsystem_restart_dev(struct subsys_device *dev)
 		subsys_set_reset_reason(name, 0);
 	}
 	silent_ssr = 0;
+#endif
 
 	/*
 	 * If a system reboot/shutdown is underway, ignore subsystem errors.

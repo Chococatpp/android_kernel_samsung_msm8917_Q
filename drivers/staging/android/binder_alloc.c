@@ -33,7 +33,7 @@
 
 struct list_lru binder_alloc_lru;
 
-extern int system_server_pid;
+int system_server_pid;
 
 static DEFINE_MUTEX(binder_alloc_mmap_lock);
 
@@ -52,6 +52,22 @@ module_param_named(debug_mask, binder_alloc_debug_mask,
 		if (binder_alloc_debug_mask & mask) \
 			pr_info(x); \
 	} while (0)
+
+static struct kmem_cache *binder_buffer_pool;
+
+int binder_buffer_pool_create(void)
+{
+	binder_buffer_pool = KMEM_CACHE(binder_buffer, SLAB_HWCACHE_ALIGN);
+	if (!binder_buffer_pool)
+		return -ENOMEM;
+
+	return 0;
+}
+
+void binder_buffer_pool_destroy(void)
+{
+	kmem_cache_destroy(binder_buffer_pool);
+}
 
 static struct binder_buffer *binder_buffer_next(struct binder_buffer *buffer)
 {
@@ -376,20 +392,6 @@ struct binder_buffer *binder_alloc_new_buf_locked(struct binder_alloc *alloc,
 		return ERR_PTR(-ENOSPC);
 	}
 
-	if (is_async &&
-	    524288 <= size + sizeof(struct binder_buffer)) { //512K
-		pr_info("%d: binder_alloc_buf size %zd(%zd) failed, too large async size\n",
-			     alloc->pid, size, alloc->free_async_space);
-
-		return ERR_PTR(-ENOSPC);
-	}
-	if (1048576 <= size + sizeof(struct binder_buffer)) { //1M
-		pr_info("%d: binder_alloc_buf size %zd failed, too large size\n",
-			     alloc->pid, size);
-
-		return ERR_PTR(-ENOSPC);
-	}
-
 	/* Pad 0-size buffers so they get assigned unique addresses */
 	size = max(size, sizeof(void *));
 
@@ -465,7 +467,7 @@ struct binder_buffer *binder_alloc_new_buf_locked(struct binder_alloc *alloc,
 	if (buffer_size != size) {
 		struct binder_buffer *new_buffer;
 
-		new_buffer = kzalloc(sizeof(*buffer), GFP_KERNEL);
+		new_buffer = kmem_cache_zalloc(binder_buffer_pool, GFP_KERNEL);
 		if (!new_buffer) {
 			pr_err("%s: %d failed to alloc new buffer struct\n",
 			       __func__, alloc->pid);
@@ -490,12 +492,12 @@ struct binder_buffer *binder_alloc_new_buf_locked(struct binder_alloc *alloc,
 	buffer->extra_buffers_size = extra_buffers_size;
 	if (is_async) {
 		alloc->free_async_space -= size + sizeof(struct binder_buffer);
-		if ((system_server_pid == alloc->pid) && (alloc->free_async_space <= 153600)) { // 150K
-			pr_info("%d: [free_size<150K] binder_alloc_buf size %zd async free %zd\n",
+		if ((system_server_pid == alloc->pid) && (alloc->free_async_space <= 102400)) { // 100K
+			pr_info("%d: [free_size<100K] binder_alloc_buf size %zd async free %zd\n",
 			alloc->pid, size, alloc->free_async_space);
 		}
-		if ((system_server_pid == alloc->pid) && (size >= 122880)) { // 120K
-			pr_info("%d: [alloc_size>120K] binder_alloc_buf size %zd async free %zd\n",
+		if ((system_server_pid == alloc->pid) && (size >= 204800)) { // 200K
+			pr_info("%d: [alloc_size>200K] binder_alloc_buf size %zd async free %zd\n",
 				alloc->pid, size, alloc->free_async_space);
 		}
 		binder_alloc_debug(BINDER_DEBUG_BUFFER_ALLOC_ASYNC,
@@ -594,7 +596,7 @@ static void binder_delete_free_buffer(struct binder_alloc *alloc,
 					 buffer_start_page(buffer) + PAGE_SIZE);
 	}
 	list_del(&buffer->entry);
-	kfree(buffer);
+	kmem_cache_free(binder_buffer_pool, buffer);
 }
 
 static void binder_free_buf_locked(struct binder_alloc *alloc,
@@ -727,7 +729,7 @@ int binder_alloc_mmap_handler(struct binder_alloc *alloc,
 	}
 	alloc->buffer_size = vma->vm_end - vma->vm_start;
 
-	buffer = kzalloc(sizeof(*buffer), GFP_KERNEL);
+	buffer = kmem_cache_zalloc(binder_buffer_pool, GFP_KERNEL);
 	if (!buffer) {
 		ret = -ENOMEM;
 		failure_string = "alloc buffer struct";
@@ -739,6 +741,10 @@ int binder_alloc_mmap_handler(struct binder_alloc *alloc,
 	buffer->free = 1;
 	binder_insert_free_buffer(alloc, buffer);
 	alloc->free_async_space = alloc->buffer_size / 2;
+	if (alloc->free_async_space == 1044480) {
+		// This is system_server
+		system_server_pid = alloc->pid;
+	}
 	barrier();
 	alloc->vma = vma;
 	alloc->vma_vm_mm = vma->vm_mm;
@@ -790,7 +796,7 @@ void binder_alloc_deferred_release(struct binder_alloc *alloc)
 
 		list_del(&buffer->entry);
 		WARN_ON_ONCE(!list_empty(&alloc->buffers));
-		kfree(buffer);
+		kmem_cache_free(binder_buffer_pool, buffer);
 	}
 
 	page_count = 0;
